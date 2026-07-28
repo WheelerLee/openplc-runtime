@@ -1,0 +1,70 @@
+kind: pipeline
+type: docker
+name: build-armv7
+
+node:
+  per: 6C16G
+
+services:
+  - name: docker
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+
+steps:
+  - name: build-and-push
+    image: docker:27-cli
+    environment:
+      DOCKER_HOST: tcp://docker:2375
+      DOCKER_TLS_CERTDIR: ""
+      username:
+        from_secret: LY_LW_DOCKER_USER
+      password:
+        from_secret: LY_LW_DOCKER_PASS
+    commands:
+      - |
+        set -eu
+
+        until docker info >/dev/null 2>&1; do
+          echo "Waiting for the Docker daemon..."
+          sleep 1
+        done
+
+        case "$${DRONE_TAG:-}" in
+          v?*)
+            VERSION="$${DRONE_TAG#v}"
+            ;;
+          *)
+            echo "A Git tag beginning with 'v' is required (for example: v1.0.0)." >&2
+            exit 1
+            ;;
+        esac
+
+        IMAGE="docker-mirror.blueorigintech.com:5000/lanyuan/openplc-runtime"
+        IMAGE_TAG="$${VERSION}-armv7"
+
+        echo "$${password}" | docker login \
+          docker-mirror.blueorigintech.com:5000 \
+          --username "$${username}" \
+          --password-stdin
+
+        docker run --privileged --rm tonistiigi/binfmt:latest --install arm
+        docker buildx create \
+          --name armv7-builder \
+          --driver docker-container \
+          --use
+        docker buildx inspect --bootstrap
+
+        docker buildx build \
+          --platform linux/arm/v7 \
+          --build-arg "RUNTIME_VERSION=$${DRONE_TAG}" \
+          --tag "$${IMAGE}:$${IMAGE_TAG}" \
+          --push \
+          .
+
+trigger:
+  event:
+    - tag
+  ref:
+    - refs/tags/v*
