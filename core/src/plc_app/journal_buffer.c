@@ -23,6 +23,7 @@
  */
 
 #include "journal_buffer.h"
+#include "retain_store.h"
 #include "utils/log.h"
 #include "utils/utils.h"
 #include <stdio.h>
@@ -136,7 +137,11 @@ static void apply_write_raw(const journal_entry_t *entry)
         }
         case JOURNAL_BOOL_MEMORY: {
             IEC_BOOL *ptr = g_buffer_ptrs.bool_memory[idx][entry->bit_index];
-            if (ptr != NULL) { *ptr = (IEC_BOOL)(entry->value & 1); }
+            IEC_BOOL value = (IEC_BOOL)(entry->value & 1);
+            if (ptr != NULL && *ptr != value) {
+                *ptr = value;
+                retain_store_mark_dirty();
+            }
             break;
         }
         case JOURNAL_BYTE_INPUT: {
@@ -161,7 +166,11 @@ static void apply_write_raw(const journal_entry_t *entry)
         }
         case JOURNAL_INT_MEMORY: {
             IEC_UINT *ptr = g_buffer_ptrs.int_memory[idx];
-            if (ptr != NULL) { *ptr = (IEC_UINT)(entry->value & 0xFFFF); }
+            IEC_UINT value = (IEC_UINT)(entry->value & 0xFFFF);
+            if (ptr != NULL && *ptr != value) {
+                *ptr = value;
+                retain_store_mark_dirty();
+            }
             break;
         }
         case JOURNAL_DINT_INPUT: {
@@ -176,7 +185,11 @@ static void apply_write_raw(const journal_entry_t *entry)
         }
         case JOURNAL_DINT_MEMORY: {
             IEC_UDINT *ptr = g_buffer_ptrs.dint_memory[idx];
-            if (ptr != NULL) { *ptr = (IEC_UDINT)(entry->value & 0xFFFFFFFF); }
+            IEC_UDINT value = (IEC_UDINT)(entry->value & 0xFFFFFFFF);
+            if (ptr != NULL && *ptr != value) {
+                *ptr = value;
+                retain_store_mark_dirty();
+            }
             break;
         }
         case JOURNAL_LINT_INPUT: {
@@ -191,7 +204,11 @@ static void apply_write_raw(const journal_entry_t *entry)
         }
         case JOURNAL_LINT_MEMORY: {
             IEC_ULINT *ptr = g_buffer_ptrs.lint_memory[idx];
-            if (ptr != NULL) { *ptr = (IEC_ULINT)entry->value; }
+            IEC_ULINT value = (IEC_ULINT)entry->value;
+            if (ptr != NULL && *ptr != value) {
+                *ptr = value;
+                retain_store_mark_dirty();
+            }
             break;
         }
         default:

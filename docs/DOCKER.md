@@ -49,6 +49,7 @@ The runtime stores important data in `/var/run/runtime/`:
 **Contents:**
 - `.env` - Environment variables (JWT secret, database URI, pepper)
 - `restapi.db` - SQLite database with user accounts
+- `retain_m.bin` - Retained OpenPLC M-area values
 - Socket files (created at runtime, ephemeral)
 
 **Volume Mount:**

@@ -140,6 +140,11 @@ The runtime supports dynamically loaded plugins for hardware I/O:
 
 Contains:
 - Socket files (created at runtime)
+- `retain_m.bin` - CRC-protected `%MX/%MW/%MD/%ML` process-image snapshot
+
+For M-area values to survive a native Linux reboot, `/var/run/runtime` must be
+backed by persistent storage rather than the usual `/run` tmpfs. Docker
+deployments satisfy this requirement by mounting a named volume at this path.
 
 ### Persistent Data Directory
 **Location:** `/var/lib/openplc-runtime/` on native Linux; `/var/run/runtime/` in Docker (mounted as a persistent volume)

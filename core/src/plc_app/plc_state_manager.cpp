@@ -36,6 +36,7 @@ extern "C" {
 #include "journal_buffer.h"
 #include "plc_state_manager.h"
 #include "plcapp_manager.h"
+#include "retain_store.h"
 #include "scan_cycle_manager.h"
 #include "utils/log.h"
 #include "utils/utils.h"
@@ -393,6 +394,21 @@ void *plc_cycle_thread(void *arg)
     image_tables_fill_null_pointers();
     pthread_mutex_unlock(itm);
 
+    retain_store_buffers_t retain_buffers = {
+        .bool_memory = bool_memory,
+        .int_memory = int_memory,
+        .dint_memory = dint_memory,
+        .lint_memory = lint_memory,
+        .buffer_size = BUFFER_SIZE,
+        .image_lock = image_lock,
+        .image_unlock = image_unlock,
+    };
+    /* A missing snapshot is the normal first-start case. Invalid snapshots are
+     * logged and ignored by retain_store_restore; neither condition blocks PLC
+     * startup. Restore before journal/plugins/tasks so their first read sees
+     * the retained M-area image. */
+    (void)retain_store_restore(&retain_buffers);
+
     journal_buffer_ptrs_t journal_ptrs = {
         .bool_input   = bool_input,
         .bool_output  = bool_output,
@@ -418,6 +434,9 @@ void *plc_cycle_thread(void *arg)
     else
     {
         log_info("Journal buffer initialized");
+        /* Persistence failure is non-fatal: the PLC keeps running with its
+         * in-memory M area and the worker logs the storage error. */
+        (void)retain_store_start(&retain_buffers);
     }
 
     if (plugin_driver)
@@ -1058,11 +1077,16 @@ extern "C" int unload_plc_program(PluginManager *pm)
 
         pthread_join(plc_thread, NULL);
 
+        /* Stop external producers first, then drain their final journal writes
+         * before taking the last retained M-area snapshot. */
+        plugin_driver_stop(plugin_driver);
+        image_lock();
+        image_unlock();
+        retain_store_stop(true);
+
         journal_cleanup();
         debug_write_journal_reset();
         log_info("Journal buffer cleaned up");
-
-        plugin_driver_stop(plugin_driver);
 
         pthread_mutex_t *itm = image_tables_mutex();
         pthread_mutex_lock(itm);
