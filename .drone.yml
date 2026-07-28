@@ -5,30 +5,32 @@ name: build-armv7
 node:
   per: 6C16G
 
-services:
-  - name: docker
-    image: docker:27-dind
-    privileged: true
-    environment:
-      DOCKER_TLS_CERTDIR: ""
-
 steps:
   - name: build-and-push
     image: docker:27-cli
     environment:
-      DOCKER_HOST: tcp://docker:2375
-      DOCKER_TLS_CERTDIR: ""
+      DOCKER_HOST: unix:///var/run/docker.sock
       username:
         from_secret: LY_LW_DOCKER_USER
       password:
         from_secret: LY_LW_DOCKER_PASS
+    volumes:
+      - name: docker-socket
+        path: /var/run/docker.sock
     commands:
       - |
         set -eu
 
+        attempt=0
         until docker info >/dev/null 2>&1; do
+          attempt=$$((attempt + 1))
+          if [ "$${attempt}" -ge 60 ]; then
+            echo "Docker daemon did not become ready within 120 seconds." >&2
+            docker info || true
+            exit 1
+          fi
           echo "Waiting for the Docker daemon..."
-          sleep 1
+          sleep 2
         done
 
         case "$${DRONE_TAG:-}" in
@@ -43,6 +45,12 @@ steps:
 
         IMAGE="docker-mirror.blueorigintech.com:5000/lanyuan/openplc-runtime"
         IMAGE_TAG="$${VERSION}-armv7"
+        BUILDER_NAME="openplc-armv7-$${DRONE_BUILD_NUMBER}"
+
+        cleanup() {
+          docker buildx rm "$${BUILDER_NAME}" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
 
         echo "$${password}" | docker login \
           docker-mirror.blueorigintech.com:5000 \
@@ -50,8 +58,9 @@ steps:
           --password-stdin
 
         docker run --privileged --rm tonistiigi/binfmt:latest --install arm
+        docker buildx rm "$${BUILDER_NAME}" >/dev/null 2>&1 || true
         docker buildx create \
-          --name armv7-builder \
+          --name "$${BUILDER_NAME}" \
           --driver docker-container \
           --use
         docker buildx inspect --bootstrap
@@ -62,6 +71,11 @@ steps:
           --tag "$${IMAGE}:$${IMAGE_TAG}" \
           --push \
           .
+
+volumes:
+  - name: docker-socket
+    host:
+      path: /var/run/docker.sock
 
 trigger:
   event:
